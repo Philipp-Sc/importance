@@ -1,47 +1,46 @@
-use crate::score::{Model, score, ScoreKind};
+use std::ops::Deref;
+use crate::score::{Model, score, score_with_indices, ScoreKind};
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 pub mod score;
 
-fn all_permutation_score(model: &dyn Model, mut x: Vec<Vec<f64>>, y: &Vec<f64>, kind: ScoreKind, n_repeats: usize) -> f64 {
-    let mut scores = vec![];
-    let mut rng = thread_rng();
+
+fn all_permutation_score(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>, kind: ScoreKind, n_repeats: usize) -> f64 {
     let chunk_size = x[0].len();
 
-    for _ in 0..n_repeats {
-        let x_flattened: Vec<f64> = x.iter().flatten().copied().collect();
-        let mut x_shuffled: Vec<f64> = x_flattened.clone();
-        x_shuffled.shuffle(&mut rng);
+    let scores: Vec<f64> = (0..n_repeats).into_par_iter().map_init(|| {
+        let mut rng = thread_rng();
+        let indices: Vec<usize> = (0..chunk_size).collect();
+        (rng, indices)
+    }, |(rng, indices), _| {
+        indices.shuffle(rng);
 
-        for (original_vec, shuffled_value) in x.iter_mut().zip(x_shuffled.chunks_exact(chunk_size)) {
-            *original_vec = shuffled_value.to_vec();
-        }
-
-        scores.push(score(model, &x, y, kind).unwrap());
-    }
+        score_with_indices(model, &x, &indices[..], y, kind).unwrap()
+    }).collect();
 
     scores.iter().sum::<f64>() / n_repeats as f64
 }
 
 
-fn permutation_scores(model: &dyn Model, mut x: Vec<Vec<f64>>, y: &Vec<f64>, kind: ScoreKind, id: usize, n_repeats: usize) -> Vec<f64> {
-    let mut scores = vec![];
-    let mut rng = thread_rng();
-
-    for _ in 0..n_repeats {
+pub fn permutation_scores(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>, kind: ScoreKind, id: usize, n_repeats: usize) -> Vec<f64> {
+    (0..n_repeats).into_par_iter().map_init(|| {
+        let mut rng = thread_rng();
+        let mut x = x.deref().clone();
         let mut column: Vec<f64> = x.iter().map(|row| row[id]).collect();
-        column.shuffle(&mut rng);
-
-        for (row, value) in x.iter_mut().zip(column.iter()) {
-            row[id] = *value;
+        (rng, x, column)
+    }, |(rng, x, column), _| {
+        column.shuffle(rng);
+        for (row, &value) in x.iter_mut().zip(column.iter()) {
+            row[id] = value;
         }
-
-        scores.push(score(model, &x, y, kind).unwrap());
-    }
-
-    scores
+        score(model, &x, y, kind).unwrap()
+    }).collect()
 }
+
+
 
 #[derive(Debug)]
 pub struct ImportanceResult {
@@ -59,16 +58,15 @@ pub struct Opts {
 }
 
 pub fn importance(model: &dyn Model, x: Vec<Vec<f64>>, y: Vec<f64>, opts: Opts) -> ImportanceResult {
+    let x = Arc::new(x);
     let base_score = score(model, &x, &y, opts.kind.unwrap()).unwrap();
     let n_features = x[0].len();
 
-    let mut importances: Vec<Vec<f64>> = vec![];
-
-    for i in 0..n_features {
-        let perm_scores = permutation_scores(model, x.clone(), &y, opts.kind.unwrap(), i, opts.n.unwrap());
-        let imp = perm_scores.iter().map(|&score| base_score - score).collect::<Vec<_>>();
-        importances.push(imp);
-    }
+    let mut importances: Vec<Vec<f64>> = (0..n_features).into_par_iter()
+        .map(|i| {
+            let perm_scores = permutation_scores(model, x.clone(), &y, opts.kind.unwrap(), i, opts.n.unwrap());
+            perm_scores.into_iter().map(|score| base_score - score).collect::<Vec<_>>()
+        }).collect();
 
     if opts.scale {
         let perm_score = all_permutation_score(model, x.clone(), &y, opts.kind.unwrap(), opts.n.unwrap());
@@ -82,10 +80,7 @@ pub fn importance(model: &dyn Model, x: Vec<Vec<f64>>, y: Vec<f64>, opts: Opts) 
 
     let importances_means = importances.iter().map(|imps| imps.iter().sum::<f64>() / opts.n.unwrap() as f64).collect::<Vec<_>>();
 
-    let importances_stds: Vec<f64> = importances.iter().enumerate().map(|(i, imps)| {
-        let mean = importances_means[i];
-        (imps.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / opts.n.unwrap() as f64).sqrt()
-    }).collect();
+
 
     if opts.only_means {
         ImportanceResult {
@@ -94,6 +89,11 @@ pub fn importance(model: &dyn Model, x: Vec<Vec<f64>>, y: Vec<f64>, opts: Opts) 
             importances_stds: vec![],
         }
     } else {
+        let importances_stds: Vec<f64> = importances.iter().enumerate().map(|(i, imps)| {
+            let mean = importances_means[i];
+            (imps.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / opts.n.unwrap() as f64).sqrt()
+        }).collect();
+
         ImportanceResult {
             importances,
             importances_means,

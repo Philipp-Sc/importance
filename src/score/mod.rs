@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::sync::Arc;
 
 // Updated ScoreKind enum without Ce
 #[derive(Clone, Copy)]
@@ -9,8 +11,14 @@ pub enum ScoreKind {
     Acc,
 }
 
-pub trait Model {
+pub trait Model: Send + Sync {
     fn predict(&self, x: &Vec<Vec<f64>>) -> Vec<f64>;
+
+    fn predict_with_indices(&self, x: &Arc<Vec<Vec<f64>>>, indices: &[usize]) -> Vec<f64> {
+        // implement this function without using .clone() to improve the performance further.
+        let x_permutated: Vec<Vec<f64>> = indices.iter().map(|&i| x[i].clone()).collect();
+        self.predict(&x_permutated)
+    }
 }
 
 fn mae(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
@@ -53,6 +61,25 @@ pub fn score(model: &dyn Model, x: &Vec<Vec<f64>>, y: &Vec<f64>, kind: ScoreKind
     Ok(score)
 }
 
+pub fn score_with_indices(
+    model: &dyn Model,
+    x_arc: &Arc<Vec<Vec<f64>>>,
+    indices: &[usize],
+    y: &Vec<f64>,
+    kind: ScoreKind,
+) -> Result<f64, Box<dyn Error>> {
+    let prediction = model.predict_with_indices(&x_arc, indices);
+    Ok(match kind {
+        ScoreKind::Mae => mae(&prediction, y),
+        ScoreKind::Mse => mse(&prediction, y),
+        ScoreKind::Rmse => rmse(&prediction, y),
+        ScoreKind::Smape => smape(&prediction, y),
+        ScoreKind::Acc => acc(&prediction, y),
+    })
+}
+
+
+
 
 #[cfg(test)]
 mod tests {
@@ -69,7 +96,7 @@ mod tests {
     #[test]
     fn it_works() {
         let model = MockModel;
-        let x = vec![vec![],vec![],vec![]];
+        let x =  vec![vec![],vec![],vec![]];
         let y = vec![0.4, 0.6, 0.8];
 
         let expected_mae_score = 0.0;
