@@ -13,12 +13,18 @@ fn all_permutation_score(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>,
 
     let scores: Vec<f64> = (0..n_repeats).into_par_iter().map_init(|| {
         let mut rng = thread_rng();
-        let indices: Vec<usize> = (0..chunk_size).collect();
-        (rng, indices)
-    }, |(rng, indices), _| {
-        indices.shuffle(rng);
+        let mut x = x.deref().clone();
+        let x_flattened: Vec<f64> = x.iter().flatten().copied().collect();
+        let mut x_shuffled: Vec<f64> = x_flattened.clone();
+        (rng, x, x_shuffled)
+    }, |(rng, x, x_shuffled), _| {
+        x_shuffled.shuffle(rng);
 
-        score_with_indices(model, &x, &indices[..], y, kind).unwrap()
+        for (original_vec, shuffled_value) in x.iter_mut().zip(x_shuffled.chunks_exact(chunk_size)) {
+            *original_vec = shuffled_value.to_vec();
+        }
+
+        score(model, &x, y, kind).unwrap()
     }).collect();
 
     scores.iter().sum::<f64>() / n_repeats as f64
@@ -117,12 +123,12 @@ mod tests {
     #[test]
     fn it_works() {
         let model = MockModel;
-        let x = vec![vec![1.0, 0.0, 3.0], vec![4.0, 0.0, 6.0], vec![7.0, 0.0, 9.0]];
-        let y = vec![4.0, 10.0, 16.0];
+        let x = vec![vec![100.0,1.0, 0.0, 3.0], vec![200.0,4.0, 0.0, 6.0], vec![1000.0,7.0, 0.0, 9.0]];
+        let y = vec![104.0, 210.0, 1016.0];
 
         let opts = Opts {
             verbose: true,
-            kind: Some(ScoreKind::Smape),
+            kind: Some(ScoreKind::Rmse),
             n: Some(100),
             only_means: true,
             scale: true,
