@@ -13,6 +13,12 @@ When called, the `importance` function shuffles each feature `n` times and compu
 
 ### Usage
 ```rust
+importance = { git="https://github.com/philipp-sc/importance.git" }
+```
+```rust
+    use importance::*;
+    use importance::score::*;
+
     struct MockModel;
 
     impl Model for MockModel {
