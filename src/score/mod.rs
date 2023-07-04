@@ -34,9 +34,18 @@ fn rmse(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
 }
 
 fn smape(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
-    let sum = yt.iter().zip(yp.iter()).map(|(a, b)| 2.0 * (a - b).abs() / (a.abs() + b.abs())).sum::<f64>();
+    let sum = yt.iter().zip(yp.iter())
+        .map(|(a, b)| {
+            if a.abs() + b.abs() != 0.0 {
+                2.0 * (a - b).abs() / (a.abs() + b.abs())
+            } else {
+                0.0
+            }
+        })
+        .sum::<f64>();
     (sum / yt.len() as f64) * 100.0
 }
+
 
 fn acc(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
     yt.iter().zip(yp.iter()).map(|(a, b)| if a == b { 1.0 } else { 0.0 }).sum::<f64>() / yt.len() as f64
