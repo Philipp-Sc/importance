@@ -2,7 +2,7 @@ use crate::score::{Model, score, ScoreKind};
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 
-mod score;
+pub mod score;
 
 fn all_permutation_score(model: &dyn Model, mut x: Vec<Vec<f64>>, y: &Vec<f64>, kind: ScoreKind, n_repeats: usize) -> f64 {
     let mut scores = vec![];
