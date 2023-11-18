@@ -8,14 +8,14 @@ use std::sync::{Arc, Mutex};
 pub mod score;
 
 
-fn all_permutation_score(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>, kind: ScoreKind, n_repeats: usize) -> f64 {
+fn all_permutation_score(model: &dyn Model, x: Arc<Vec<Vec<f32>>>, y: &Vec<f32>, kind: ScoreKind, n_repeats: usize) -> f32 {
     let chunk_size = x[0].len();
 
-    let scores: Vec<f64> = (0..n_repeats).into_par_iter().map_init(|| {
+    let scores: Vec<f32> = (0..n_repeats).into_par_iter().map_init(|| {
         let mut rng = thread_rng();
         let mut x = x.deref().clone();
-        let x_flattened: Vec<f64> = x.iter().flatten().copied().collect();
-        let mut x_shuffled: Vec<f64> = x_flattened.clone();
+        let x_flattened: Vec<f32> = x.iter().flatten().copied().collect();
+        let mut x_shuffled: Vec<f32> = x_flattened.clone();
         (rng, x, x_shuffled)
     }, |(rng, x, x_shuffled), _| {
         x_shuffled.shuffle(rng);
@@ -27,15 +27,15 @@ fn all_permutation_score(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>,
         score(model, &x, y, kind).unwrap()
     }).collect();
 
-    scores.iter().sum::<f64>() / n_repeats as f64
+    scores.iter().sum::<f32>() / n_repeats as f32
 }
 
 
-pub fn permutation_scores(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>, kind: ScoreKind, id: usize, n_repeats: usize) -> Vec<f64> {
+pub fn permutation_scores(model: &dyn Model, x: Arc<Vec<Vec<f32>>>, y: &Vec<f32>, kind: ScoreKind, id: usize, n_repeats: usize) -> Vec<f32> {
     (0..n_repeats).into_par_iter().map_init(|| {
         let mut rng = thread_rng();
         let mut x = x.deref().clone();
-        let mut column: Vec<f64> = x.iter().map(|row| row[id]).collect();
+        let mut column: Vec<f32> = x.iter().map(|row| row[id]).collect();
         (rng, x, column)
     }, |(rng, x, column), _| {
         column.shuffle(rng);
@@ -50,9 +50,9 @@ pub fn permutation_scores(model: &dyn Model, x: Arc<Vec<Vec<f64>>>, y: &Vec<f64>
 
 #[derive(Debug)]
 pub struct ImportanceResult {
-    pub importances: Vec<Vec<f64>>,
-    pub importances_means: Vec<f64>,
-    pub importances_stds: Vec<f64>,
+    pub importances: Vec<Vec<f32>>,
+    pub importances_means: Vec<f32>,
+    pub importances_stds: Vec<f32>,
 }
 
 pub struct Opts {
@@ -63,12 +63,12 @@ pub struct Opts {
     pub scale: bool,
 }
 
-pub fn importance(model: &dyn Model, x: Vec<Vec<f64>>, y: Vec<f64>, opts: Opts) -> ImportanceResult {
+pub fn importance(model: &dyn Model, x: Vec<Vec<f32>>, y: Vec<f32>, opts: Opts) -> ImportanceResult {
     let x = Arc::new(x);
     let base_score = score(model, &x, &y, opts.kind.unwrap()).unwrap();
     let n_features = x[0].len();
 
-    let mut importances: Vec<Vec<f64>> = (0..n_features).into_par_iter()
+    let mut importances: Vec<Vec<f32>> = (0..n_features).into_par_iter()
         .map(|i| {
             let perm_scores = permutation_scores(model, x.clone(), &y, opts.kind.unwrap(), i, opts.n.unwrap());
             perm_scores.into_iter().map(|score| base_score - score).collect::<Vec<_>>()
@@ -84,7 +84,7 @@ pub fn importance(model: &dyn Model, x: Vec<Vec<f64>>, y: Vec<f64>, opts: Opts) 
         importances = importances.iter().map(|imp| imp.iter().map(|&v| v / if factor!=0.0 {factor}else{1.0}).collect()).collect();
     }
 
-    let importances_means = importances.iter().map(|imps| imps.iter().sum::<f64>() / opts.n.unwrap() as f64).collect::<Vec<_>>();
+    let importances_means = importances.iter().map(|imps| imps.iter().sum::<f32>() / opts.n.unwrap() as f32).collect::<Vec<_>>();
 
 
 
@@ -95,9 +95,9 @@ pub fn importance(model: &dyn Model, x: Vec<Vec<f64>>, y: Vec<f64>, opts: Opts) 
             importances_stds: vec![],
         }
     } else {
-        let importances_stds: Vec<f64> = importances.iter().enumerate().map(|(i, imps)| {
+        let importances_stds: Vec<f32> = importances.iter().enumerate().map(|(i, imps)| {
             let mean = importances_means[i];
-            (imps.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / opts.n.unwrap() as f64).sqrt()
+            (imps.iter().map(|&v| (v - mean).powi(2)).sum::<f32>() / opts.n.unwrap() as f32).sqrt()
         }).collect();
 
         ImportanceResult {
@@ -115,7 +115,7 @@ mod tests {
     struct MockModel;
 
     impl Model for MockModel {
-        fn predict(&self, x: &Vec<Vec<f64>>) -> Vec<f64> {
+        fn predict(&self, x: &Vec<Vec<f32>>) -> Vec<f32> {
             x.iter().map(|x| x.iter().sum()).collect() // Mock predictions
         }
     }
