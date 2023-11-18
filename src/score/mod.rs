@@ -12,28 +12,28 @@ pub enum ScoreKind {
 }
 
 pub trait Model: Send + Sync {
-    fn predict(&self, x: &Vec<Vec<f64>>) -> Vec<f64>;
+    fn predict(&self, x: &Vec<Vec<f32>>) -> Vec<f32>;
 
-    fn predict_with_indices(&self, x: &Arc<Vec<Vec<f64>>>, indices: &[usize]) -> Vec<f64> {
+    fn predict_with_indices(&self, x: &Arc<Vec<Vec<f32>>>, indices: &[usize]) -> Vec<f32> {
         // implement this function without using .clone() to improve the performance further.
-        let x_permutated: Vec<Vec<f64>> = indices.iter().map(|&i| x[i].clone()).collect();
+        let x_permutated: Vec<Vec<f32>> = indices.iter().map(|&i| x[i].clone()).collect();
         self.predict(&x_permutated)
     }
 }
 
-fn mae(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
-    yt.iter().zip(yp.iter()).map(|(a, b)| (a - b).abs()).sum::<f64>() / yt.len() as f64
+fn mae(yt: &Vec<f32>, yp: &Vec<f32>) -> f32 {
+    yt.iter().zip(yp.iter()).map(|(a, b)| (a - b).abs()).sum::<f32>() / yt.len() as f32
 }
 
-fn mse(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
-    yt.iter().zip(yp.iter()).map(|(a, b)| (a - b).powf(2.0)).sum::<f64>() / yt.len() as f64
+fn mse(yt: &Vec<f32>, yp: &Vec<f32>) -> f32 {
+    yt.iter().zip(yp.iter()).map(|(a, b)| (a - b).powf(2.0)).sum::<f32>() / yt.len() as f32
 }
 
-fn rmse(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
+fn rmse(yt: &Vec<f32>, yp: &Vec<f32>) -> f32 {
     (mse(yt, yp)).sqrt()
 }
 
-fn smape(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
+fn smape(yt: &Vec<f32>, yp: &Vec<f32>) -> f32 {
     let sum = yt.iter().zip(yp.iter())
         .map(|(a, b)| {
             if a.abs() + b.abs() != 0.0 {
@@ -42,16 +42,16 @@ fn smape(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
                 0.0
             }
         })
-        .sum::<f64>();
-    (sum / yt.len() as f64) * 100.0
+        .sum::<f32>();
+    (sum / yt.len() as f32) * 100.0
 }
 
 
-fn acc(yt: &Vec<f64>, yp: &Vec<f64>) -> f64 {
-    yt.iter().zip(yp.iter()).map(|(a, b)| if a == b { 1.0 } else { 0.0 }).sum::<f64>() / yt.len() as f64
+fn acc(yt: &Vec<f32>, yp: &Vec<f32>) -> f32 {
+    yt.iter().zip(yp.iter()).map(|(a, b)| if a == b { 1.0 } else { 0.0 }).sum::<f32>() / yt.len() as f32
 }
 
-pub fn score(model: &dyn Model, x: &Vec<Vec<f64>>, y: &Vec<f64>, kind: ScoreKind) -> Result<f64, &'static str> {
+pub fn score(model: &dyn Model, x: &Vec<Vec<f32>>, y: &Vec<f32>, kind: ScoreKind) -> Result<f32, &'static str> {
     if y.len() != x.len() {
         return Err("Arrays have different length");
     }
@@ -72,11 +72,11 @@ pub fn score(model: &dyn Model, x: &Vec<Vec<f64>>, y: &Vec<f64>, kind: ScoreKind
 
 pub fn score_with_indices(
     model: &dyn Model,
-    x_arc: &Arc<Vec<Vec<f64>>>,
+    x_arc: &Arc<Vec<Vec<f32>>>,
     indices: &[usize],
-    y: &Vec<f64>,
+    y: &Vec<f32>,
     kind: ScoreKind,
-) -> Result<f64, Box<dyn Error>> {
+) -> Result<f32, Box<dyn Error>> {
     let prediction = model.predict_with_indices(&x_arc, indices);
     Ok(match kind {
         ScoreKind::Mae => mae(&prediction, y),
@@ -97,7 +97,7 @@ mod tests {
     struct MockModel;
 
     impl Model for MockModel {
-        fn predict(&self, _x: &Vec<Vec<f64>>) -> Vec<f64> {
+        fn predict(&self, _x: &Vec<Vec<f32>>) -> Vec<f32> {
             vec![0.4, 0.6, 0.8] // Mock predictions
         }
     }
